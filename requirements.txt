@@ -8,3 +8,4 @@ xgboost
 torch
 joblib
 tqdm
+plotly
