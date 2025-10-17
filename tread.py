@@ -466,7 +466,9 @@ class LSTMModel(nn.Module):
         out = self.fc(out[:, -1, :])
         return out
 
-def predict_with_lstm(symbol, interval, model_dir=r"G:\Python\crypto_models", sequence_length=20):
+MODEL_DIR = os.path.join(os.path.dirname(__file__), "crypto_models")
+
+def predict_with_lstm(symbol, interval, model_dir=MODEL_DIR, sequence_length=20):
     """Predict next price using pretrained LSTM model if available"""
     try:
         # Skip problematic symbols
@@ -967,7 +969,9 @@ def setup_refresh_controls():
 def display_dashboard(symbol, period, interval):
     # Display top currencies at the very top
     display_top_currencies()
+    # st.session_state.force_refresh = True
     
+    # check_and_refresh()
     # Display refresh timer
     st.markdown("---")
     st.subheader("🕐 Live Refresh Timer")
@@ -1132,11 +1136,13 @@ def main():
     # Setup refresh controls
     auto_refresh, refresh_interval = setup_refresh_controls()
     
-    # Check if refresh is needed
-    check_and_refresh()
+  
     
     # Display main dashboard
     display_dashboard(symbol, period, interval)
+    
+      # Check if refresh is needed
+    check_and_refresh()
     
     # Timer and refresh info in sidebar
     st.sidebar.markdown("---")
@@ -1163,6 +1169,7 @@ def main():
         - Currencies Scanned: {len(st.session_state.currency_confidences)}
         - Status: {'✅ Complete' if st.session_state.initial_scan_complete else '🔄 In Progress'}
         """)
+    
 
 # Run the main function
 if __name__ == "__main__":
