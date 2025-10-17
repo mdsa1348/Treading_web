@@ -1,0 +1,10 @@
+streamlit==1.50.0
+yfinance
+pandas
+numpy
+matplotlib
+scikit-learn
+xgboost
+torch
+joblib
+tqdm
