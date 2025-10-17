@@ -1089,17 +1089,17 @@ def display_dashboard(symbol, period, interval):
     with col1:
         st.metric(
             label="💰 Current Price",
-            value=f"${latest_price:,.2f}",
-            delta=f"{price_change:+.2f} ({price_change_pct:+.2f}%)"
+            value=f"${latest_price:,.5f}",
+            delta=f"{price_change:+.5f} ({price_change_pct:+.5f}%)"
         )
     
     with col2:
         period_high = float(display_data['High'].max())
-        st.metric("📈 Session High", f"${period_high:,.2f}")
+        st.metric("📈 Session High", f"${period_high:,.5f}")
     
     with col3:
         period_low = float(display_data['Low'].min())
-        st.metric("📉 Session Low", f"${period_low:,.2f}")
+        st.metric("📉 Session Low", f"${period_low:,.5f}")
     
     with col4:
         volume = float(display_data['Volume'].iloc[-1]) if 'Volume' in display_data.columns else 0
@@ -1143,7 +1143,7 @@ def main():
     
       # Check if refresh is needed
     check_and_refresh()
-    
+
     # Timer and refresh info in sidebar
     st.sidebar.markdown("---")
     st.sidebar.header("🕐 Timer Information")
