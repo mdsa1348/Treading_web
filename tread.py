@@ -62,7 +62,7 @@ if 'initial_scan_complete' not in st.session_state:
 # ==============================
 DEFAULT_CURRENCIES = [
     "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOT-USD", "BNB-USD", "AVAX-USD", "LINK-USD", "LTC-USD",
-    "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "GLD", "SLV"
+    "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X", "XAGUSD=X"
 ]
 if 'custom_symbols' not in st.session_state:
     st.session_state.custom_symbols = []
@@ -341,14 +341,39 @@ def get_training_data(symbol, interval):
 # ==============================
 def display_tradingview_widget(symbol):
     """Embed official TradingView Advanced Charting Widget"""
-    # Clean symbol for TradingView (usually BTC-USD -> BINANCE:BTCUSDT or similar)
-    tv_symbol = symbol.replace("-USD", "USDT")
-    if "=" in tv_symbol: tv_symbol = tv_symbol.replace("=X", "")
-    
-    # Try to determine exchange
-    if "USD" in symbol: exchange = "BINANCE"
-    elif "X" in symbol: exchange = "FX_IDC"
-    else: exchange = "COINBASE"
+    # Smart mapping for TradingView
+    tv_symbol = symbol.upper()
+    exchange = "BINANCE" # Default for most crypto
+
+    # Alias mapping for yfinance symbols to TradingView symbols
+    aliases = {
+        "GLD": ("AMEX", "GLD"),
+        "GOLD": ("OANDA", "XAUUSD"),
+        "SLV": ("AMEX", "SLV"),
+        "SILVER": ("OANDA", "XAGUSD"),
+        "XAUUSD=X": ("OANDA", "XAUUSD"),
+        "XAGUSD=X": ("OANDA", "XAGUSD"),
+        "EURUSD=X": ("FX", "EURUSD"),
+        "GBPUSD=X": ("FX", "GBPUSD"),
+        "USDJPY=X": ("FX", "USDJPY"),
+    }
+
+    if tv_symbol in aliases:
+        exchange, tv_symbol = aliases[tv_symbol]
+    elif "USD" in symbol:
+        if "=X" in symbol:
+            exchange = "FX"
+            tv_symbol = symbol.replace("=X", "").replace("-", "")
+        else:
+            exchange = "BINANCE"
+            tv_symbol = symbol.replace("-USD", "USDT").replace("-", "")
+    elif "=X" in symbol:
+        exchange = "FX"
+        tv_symbol = symbol.replace("=X", "").replace("-", "")
+    else:
+        # Fallback for generic symbols
+        exchange = "COINBASE"
+        tv_symbol = symbol.replace("-USD", "USDT").replace("-", "")
 
     st.markdown("---")
     st.subheader(f"📊 TradingView Live Chart: {symbol}")
@@ -1002,11 +1027,18 @@ def setup_sidebar():
     
     # Custom Symbol Support
     st.sidebar.markdown("---")
-    custom_sym = st.sidebar.text_input("🔍 Search Any Binance Pair (e.g. SOL-USD, ADA-USD)", "").upper()
+    custom_sym = st.sidebar.text_input("🔍 Search Any Pair (e.g. SOL-USD, XAUUSD, EURUSD)", "").upper()
     if st.sidebar.button("➕ Add to Dashboard"):
-        if custom_sym and custom_sym not in st.session_state.custom_symbols:
-            st.session_state.custom_symbols.append(custom_sym)
-            st.rerun()
+        if custom_sym:
+            # Normalize for yfinance
+            norm_sym = custom_sym
+            if norm_sym in ["GOLD", "XAU", "XAUUSD"]: norm_sym = "XAUUSD=X"
+            if norm_sym in ["SILVER", "XAG", "XAGUSD"]: norm_sym = "XAGUSD=X"
+            if norm_sym in ["EURUSD", "GBPUSD", "USDJPY"] and "=X" not in norm_sym: norm_sym += "=X"
+            
+            if norm_sym not in st.session_state.custom_symbols:
+                st.session_state.custom_symbols.append(norm_sym)
+                st.rerun()
 
     symbol = st.sidebar.selectbox(
         "Select Symbol", 
