@@ -372,6 +372,12 @@ def display_tradingview_widget(symbol):
         "withdateranges": true,
         "hide_side_toolbar": false,
         "allow_symbol_change": true,
+        "studies": [
+          "RSI@tv-basicstudies",
+          "MACD@tv-basicstudies",
+          "MASimple@tv-basicstudies",
+          "SuperTrend@tv-basicstudies"
+        ],
         "container_id": "tradingview_chart"
       }});
       </script>
@@ -924,22 +930,38 @@ def display_enhanced_predictions(symbol, interval, training_data, current_price)
             st.write("🛑 **Risk Management**")
             st.code(f"SL: ${sl:,.4f}\nRR: 1:2.0", language="text")
 
-        col1, col2, col3 = st.columns(3)
-        with col1: st.metric("🎯 Entry", f"${current_price:,.4f}", f"Signal: {action}")
-        with col2: 
-            st.write("**Target Goals (TP):**")
-            st.success(f"TP1: **${tp1:,.4f}**")
-            st.success(f"TP2: **${tp2:,.4f}**")
-        with col3:
-            st.write("**Safety (SL):**")
-            st.error(f"SL: **${sl:,.4f}**")
-            st.info(f"R:R Target: 1:2.0")
+        with st.expander("🛠️ Advanced Model Analysis (4-Model Breakdown)", expanded=True):
+            st.info(f"📊 Analysis Period: Recent 1 Week | Refresh Rate: {interval}")
+            
+            # Detailed Grid for the 4 Models
+            detail_col1, detail_col2 = st.columns(2)
+            model_items = list(ml_predictions.items())
+            
+            with detail_col1:
+                for name, pred in model_items[:2]:
+                    st.metric(
+                        label=f"{name} (Conf: {pred['confidence']*100:.1f}%)",
+                        value=f"${pred['price']:,.2f}",
+                        delta=f"{pred['change_pct']:+.2f}% ({pred['signal']})"
+                    )
+            
+            with detail_col2:
+                for name, pred in model_items[2:]:
+                    st.metric(
+                        label=f"{name} (Conf: {pred['confidence']*100:.1f}%)",
+                        value=f"${pred['price']:,.2f}",
+                        delta=f"{pred['change_pct']:+.2f}% ({pred['signal']})"
+                    )
 
-        with st.expander("🛠️ Signal Analysis Details"):
-            st.write(f"- **Model Consensus:** {buy_votes}/{total_models} models favor upside.")
-            st.write(f"- **RSI indicator:** {current_rsi:.2f}")
-            st.write(f"- **MACD Trend:** {'Bullish' if macd_val > sig_line else 'Bearish'}")
-            st.write(f"- **Market Volatility:** {current_atr/current_price * 100:.2f}%")
+        with st.expander("📝 Technical Logic Depth"):
+            tl_col1, tl_col2 = st.columns(2)
+            with tl_col1:
+                st.write(f"- **Consensus:** {buy_votes}/{total_models} models favor UP")
+                st.write(f"- **RSI (14):** {current_rsi:.2f}")
+            with tl_col2:
+                st.write(f"- **MACD Trend:** {'Bullish' if macd_val > sig_line else 'Bearish'}")
+                st.write(f"- **ATR Volatility:** ${current_atr:.4f}")
+
     else:
         st.info("🔄 Running multi-model technical analysis...")
 
