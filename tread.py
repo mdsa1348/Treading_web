@@ -57,14 +57,16 @@ if 'initial_scan_complete' not in st.session_state:
     st.session_state.initial_scan_complete = False
 
 # ==============================
-# Available currencies for scanning (MATIC-USD removed due to errors)
+# Available currencies for scanning
 # ==============================
-AVAILABLE_CURRENCIES = [
-    "BTC-USD", "ETH-USD", "ADA-USD", "DOT-USD", "BNB-USD", 
-    "DOGE-USD", "SOL-USD", "LTC-USD", "XRP-USD",
-    "USDT-USD", "USDC-USD", "DAI-USD", "EURUSD=X", "GBPUSD=X", 
-    "USDJPY=X", "BRL=X", "USDCAD=X", "AUDUSD=X", "GLD", "SLV", "USO"
+DEFAULT_CURRENCIES = [
+    "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOT-USD", "BNB-USD", "AVAX-USD", "LINK-USD", "LTC-USD",
+    "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "GLD", "SLV"
 ]
+if 'custom_symbols' not in st.session_state:
+    st.session_state.custom_symbols = []
+
+AVAILABLE_CURRENCIES = list(dict.fromkeys(DEFAULT_CURRENCIES + st.session_state.custom_symbols))
 
 # ==============================
 # Timer display function
@@ -334,75 +336,93 @@ def get_training_data(symbol, interval):
         return pd.DataFrame()
 
 # ==============================
-# Enhanced candlestick chart
+# TradingView Widget
 # ==============================
-def create_enhanced_candlestick(data, symbol, period, interval):
-    """Create candlestick chart optimized for all intervals"""
+def display_tradingview_widget(symbol):
+    """Embed official TradingView Advanced Charting Widget"""
+    # Clean symbol for TradingView (usually BTC-USD -> BINANCE:BTCUSDT or similar)
+    tv_symbol = symbol.replace("-USD", "USDT")
+    if "=" in tv_symbol: tv_symbol = tv_symbol.replace("=X", "")
     
-    datetime_column = 'Datetime' if 'Datetime' in data.columns else 'Date'
+    # Try to determine exchange
+    if "USD" in symbol: exchange = "BINANCE"
+    elif "X" in symbol: exchange = "FX_IDC"
+    else: exchange = "COINBASE"
+
+    st.markdown("---")
+    st.subheader(f"📊 TradingView Live Chart: {symbol}")
     
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.02,
-        subplot_titles=('', ''),
-        row_heights=[0.70, 0.30]
-    )
+    # TradingView Widget HTML
+    tv_html = f"""
+    <div class="tradingview-widget-container" style="height:600px; width:100%;">
+      <div id="tradingview_chart"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget({{
+        "autosize": true,
+        "symbol": "{exchange}:{tv_symbol}",
+        "interval": "15",
+        "timezone": "Etc/UTC",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false,
+        "hide_side_toolbar": false,
+        "allow_symbol_change": true,
+        "container_id": "tradingview_chart"
+      }});
+      </script>
+    </div>
+    """
+    st.components.v1.html(tv_html, height=620)
+
+def calculate_indicators(data):
+    """Calculate professional technical indicators"""
+    df = data.copy()
+    # RSI
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
     
-    # Add candlestick trace
-    fig.add_trace(go.Candlestick(
-        x=data[datetime_column],
-        open=data['Open'],
-        high=data['High'],
-        low=data['Low'],
-        close=data['Close'],
-        increasing_line_color='#00C805',
-        decreasing_line_color='#FF2E2E',
-        increasing_fillcolor='#00C805',
-        decreasing_fillcolor='#FF2E2E',
-        line=dict(width=1),
-        whiskerwidth=0.6,
-        name='Price'
-    ), row=1, col=1)
+    # EMAs
+    df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA_50'] = df['Close'].ewm(span=50, adjust=False).mean()
     
-    # Add volume bars
-    colors = ['#00C805' if data['Close'].iloc[i] >= data['Open'].iloc[i] 
-              else '#FF2E2E' for i in range(len(data))]
+    # ATR (True Range)
+    high_low = df['High'] - df['Low']
+    high_close = np.abs(df['High'] - df['Close'].shift())
+    low_close = np.abs(df['Low'] - df['Close'].shift())
+    ranges = pd.concat([high_low, high_close, low_close], axis=1)
+    true_range = np.max(ranges, axis=1)
+    df['ATR'] = true_range.rolling(14).mean()
     
-    fig.add_trace(go.Bar(
-        x=data[datetime_column],
-        y=data['Volume'],
-        marker_color=colors,
-        name='Volume',
-        opacity=0.7,
-        marker_line_width=0
-    ), row=2, col=1)
+    # MACD
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
     
-    # Update layout
-    fig.update_layout(
-        title=dict(
-            text=f"<b>{symbol}</b> | {period} | {interval} | Candles: {len(data)}",
-            x=0.5,
-            y=0.98,
-            xanchor='center',
-            yanchor='top',
-            font=dict(size=14, color='white')
-        ),
-        height=800,
-        template="plotly_dark",
-        showlegend=False,
-        font=dict(size=11, color='white'),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=50, r=50, t=60, b=50),
-        dragmode='zoom',
-        hovermode='x unified'
-    )
+    # Bollinger Bands
+    df['BB_Mid'] = df['Close'].rolling(window=20).mean()
+    df['BB_Std'] = df['Close'].rolling(window=20).std()
+    df['BB_Upper'] = df['BB_Mid'] + (df['BB_Std'] * 2)
+    df['BB_Lower'] = df['BB_Mid'] - (df['BB_Std'] * 2)
     
-    fig.update_yaxes(title_text="Price (USD)", row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1)
-    
-    return fig
+    return df
+
+@st.cache_data(ttl=3600)
+def get_fear_greed_index():
+    """Fetch the Crypto Fear & Greed Index"""
+    try:
+        import requests
+        response = requests.get("https://api.alternative.me/fng/")
+        data = response.json()
+        return data['data'][0]['value'], data['data'][0]['value_classification']
+    except:
+        return "50", "Neutral"
 
 # ==============================
 # Linear Regression Prediction function
@@ -537,40 +557,27 @@ def predict_with_multiple_models(training_data, current_price, interval):
         
         data = training_data.copy()
         
-        # FEATURE ENGINEERING
+        # FEATURE ENGINEERING (PRO)
+        data = calculate_indicators(data)
         data['Price_Change'] = data['Close'].pct_change().fillna(0)
-        data['Price_Change'] = np.clip(data['Price_Change'], -1, 1)
         
-        data['MA_5'] = data['Close'].rolling(5, min_periods=1).mean().fillna(data['Close'])
-        data['MA_10'] = data['Close'].rolling(10, min_periods=1).mean().fillna(data['Close'])
-        data['MA_20'] = data['Close'].rolling(20, min_periods=1).mean().fillna(data['Close'])
+        # Volatility
+        data['Volatility'] = data['Price_Change'].rolling(10, min_periods=1).std().fillna(0.01)
         
-        data['Volatility'] = data['Price_Change'].rolling(5, min_periods=1).std().fillna(0.01)
-        data['Volatility'] = np.clip(data['Volatility'], 0.001, 1)
-        
-        data['Momentum_3'] = data['Close'] - data['Close'].shift(3).fillna(data['Close'])
-        data['Momentum_5'] = data['Close'] - data['Close'].shift(5).fillna(data['Close'])
-        
-        # Volume-based features if available
-        if 'Volume' in data.columns:
-            data['Volume_MA_5'] = data['Volume'].rolling(5, min_periods=1).mean().fillna(data['Volume'])
-            data['Volume_Ratio'] = data['Volume'] / data['Volume_MA_5']
-            data['Volume_Ratio'] = np.clip(data['Volume_Ratio'], 0.1, 10)
+        # Pro Signals
+        data['RSI_Signal'] = data['RSI'].apply(lambda x: 1 if x < 30 else (-1 if x > 70 else 0))
+        data['MACD_Signal'] = (data['MACD'] > data['Signal_Line']).astype(int)
+        data['BB_Signal'] = ((data['Close'] < data['BB_Lower']).astype(int) - (data['Close'] > data['BB_Upper']).astype(int))
         
         data = data.dropna()
         
-        if len(data) < 15:
-            return {}
+        if len(data) < 20: return {}
         
         # FEATURE SET
-        feature_columns = ['Price_Change', 'MA_5', 'MA_10', 'MA_20', 'Volatility', 'Momentum_3', 'Momentum_5']
-        if 'Volume_Ratio' in data.columns:
-            feature_columns.extend(['Volume_Ratio'])
-        
+        feature_columns = ['Price_Change', 'EMA_20', 'EMA_50', 'RSI', 'MACD', 'BB_Lower', 'BB_Upper', 'Volatility', 'ATR']
         available_features = [col for col in feature_columns if col in data.columns]
         
-        if len(available_features) < 3:
-            return {}
+        if len(available_features) < 5: return {}
         
         # TIME-SERIES PREDICTION SETUP
         X = data[available_features].iloc[:-1].values
@@ -815,40 +822,101 @@ def generate_trading_insights(predictions, current_price, symbol):
 # Enhanced Predictions Display
 # ==============================
 def display_enhanced_predictions(symbol, interval, training_data, current_price):
-    """Display predictions from all models with insights"""
+    """Display predictions with Confluence Scoring and Market Sentiment"""
     st.markdown("---")
-    st.subheader("🔮 Enhanced Price Predictions")
     
-    # Get predictions from all models
+    # 1. Market Sentiment Header
+    fng_value, fng_class = get_fear_greed_index()
+    fng_color = "#00C805" if int(fng_value) > 60 else ("#FF2E2E" if int(fng_value) < 40 else "#FFA500")
+    
+    col_a, col_b = st.columns([2, 1])
+    with col_a:
+        st.subheader("🔮 Strategic Signal Room")
+    with col_b:
+        st.markdown(f"""
+        <div style="text-align:right; padding:5px; border-radius:5px; border:1px solid {fng_color};">
+            <span style="color:gray; font-size:12px;">Fear & Greed Index:</span><br>
+            <b style="color:{fng_color}; font-size:18px;">{fng_value} - {fng_class}</b>
+        </div>
+        """, unsafe_allow_with_html=True)
+
+    # 2. Analysis
+    df_with_inds = calculate_indicators(training_data)
+    current_atr = df_with_inds['ATR'].iloc[-1] if 'ATR' in df_with_inds.columns else current_price * 0.01
+    current_rsi = df_with_inds['RSI'].iloc[-1] if 'RSI' in df_with_inds.columns else 50
+    macd_val = df_with_inds['MACD'].iloc[-1]
+    sig_line = df_with_inds['Signal_Line'].iloc[-1]
+    
     ml_predictions = predict_with_multiple_models(training_data, current_price, interval)
     
-    # Get LSTM prediction
-    lstm_pred, lstm_confidence, lstm_signal, lstm_error = predict_with_lstm(symbol, interval)
-    
-    # Display ML model predictions in columns
     if ml_predictions:
-        st.success(f"🤖 Multiple Model Analysis ({len(ml_predictions)} models active)")
+        prices = [p['price'] for p in ml_predictions.values()]
+        avg_target = np.mean(prices)
+        buy_votes = sum(1 for p in ml_predictions.values() if p['signal'] == 'BUY 🟢')
+        total_models = len(ml_predictions)
         
-        # Create columns for model predictions
-        cols = st.columns(len(ml_predictions))
+        # CONFLUENCE SCORE (The "Tactics" part)
+        score = 0
+        if buy_votes >= total_models/2: score += 40
+        if current_rsi < 35: score += 20 # Oversold Buy
+        if current_rsi > 65: score -= 20 # Overbought Sell
+        if macd_val > sig_line: score += 20 # Bullish Momentum
+        if int(fng_value) > 70: score -= 10 # Caution: Bubble
+        if int(fng_value) < 30: score += 10 # Opportunity: Panic
         
-        for i, (model_name, prediction) in enumerate(ml_predictions.items()):
-            with cols[i]:
-                confidence_pct = prediction['confidence'] * 100
-                st.metric(
-                    label=f"📊 {model_name} Confidence: {confidence_pct:.2f}%",
-                    value=f"${prediction['price']:,.5f}",
-                    delta=f"{prediction['change_pct']:+.5f}% ({prediction['signal']})",
-                    help=f"Confidence: {confidence_pct:.1f}%"
-                )
+        # Normalize and set Verdict
+        score = max(0, min(100, score + 20)) # Base 20
         
-        # ADD TRADING INSIGHTS
-        st.markdown("---")
-        st.subheader("💡 Trading Insights")
-        insights = generate_trading_insights(ml_predictions, current_price, symbol)
-        st.info(insights)
+        if score > 75: 
+            verdict, color, action = "🔥 STRONG BUY", "#00C805", "BUY 🟢"
+        elif score > 55: 
+            verdict, color, action = "⚡ MODERATE BUY", "#90EE90", "BUY 🟢"
+        elif score < 25: 
+            verdict, color, action = "🔻 STRONG SELL", "#FF2E2E", "SELL 🔴"
+        elif score < 45: 
+            verdict, color, action = "📉 MODERATE SELL", "#FF7F7F", "SELL 🔴"
+        else:
+            verdict, color, action = "⚖️ NEUTRAL / WAIT", "#FFA500", "WAIT 🟡"
+
+        # Trade Plan
+        risk_multiplier = 1.5
+        if action == "BUY 🟢":
+            tp1, tp2 = current_price + (risk_multiplier * current_atr), current_price + (3 * current_atr)
+            sl = current_price - (2 * current_atr)
+        else:
+            tp1, tp2 = current_price - (risk_multiplier * current_atr), current_price - (3 * current_atr)
+            sl = current_price + (2 * current_atr)
+
+        st.markdown(f"""
+        <div style="background-color:rgba(0,0,0,0.3); border-left: 10px solid {color}; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
+            <h1 style="color:{color}; margin-top:0; margin-bottom:0;">{verdict}</h1>
+            <p style="color:gray; margin-top:0;">Confluence Score: <b>{score}/100</b></p>
+            <div style="display: flex; gap: 40px; margin-top:15px;">
+                <div><span style="color:gray;">Target:</span><br><b style="font-size:20px;">${avg_target:,.2f}</b></div>
+                <div><span style="color:gray;">Momentum:</span><br><b style="font-size:20px; color:{'#00C805' if macd_val > sig_line else '#FF2E2E'};">{'Bullish' if macd_val > sig_line else 'Bearish'}</b></div>
+                <div><span style="color:gray;">Strength:</span><br><b style="font-size:20px;">{current_rsi:.1f} RSI</b></div>
+            </div>
+        </div>
+        """, unsafe_allow_with_html=True)
+
+        col1, col2, col3 = st.columns(3)
+        with col1: st.metric("🎯 Entry", f"${current_price:,.4f}", f"Signal: {action}")
+        with col2: 
+            st.write("**Target Goals:**")
+            st.success(f"TP 🟢: **${tp1:,.4f}**")
+            st.success(f"TP 🚀: **${tp2:,.4f}**")
+        with col3:
+            st.write("**Protection:**")
+            st.error(f"SL 🛑: **${sl:,.4f}**")
+            st.info(f"Risk/Reward: 1:2.0")
+
+        with st.expander("🛠️ Why this signal? (Technical Confluence)"):
+            st.write(f"- **Models:** {buy_votes}/{total_models} models favor upside.")
+            st.write(f"- **RSI:** {current_rsi:.2f} ({'Oversold' if current_rsi<30 else 'Overbought' if current_rsi>70 else 'Neutral'})")
+            st.write(f"- **MACD:** {'Crossing Up' if macd_val > sig_line else 'Crossing Down'} (Trend change).")
+            st.write(f"- **Volatility:** Measured by ATR (${current_atr:.4f}) used for SL placement.")
     else:
-        st.warning("🤖 No ML predictions available - insufficient data or models still training")
+        st.info("🔄 Running multi-model technical analysis...")
 
 # ==============================
 # Refresh control function
@@ -885,6 +953,14 @@ def setup_sidebar():
     prev_period = st.session_state.get('prev_period', '')
     prev_interval = st.session_state.get('prev_interval', '')
     
+    # Custom Symbol Support
+    st.sidebar.markdown("---")
+    custom_sym = st.sidebar.text_input("🔍 Search Any Binance Pair (e.g. SOL-USD, ADA-USD)", "").upper()
+    if st.sidebar.button("➕ Add to Dashboard"):
+        if custom_sym and custom_sym not in st.session_state.custom_symbols:
+            st.session_state.custom_symbols.append(custom_sym)
+            st.rerun()
+
     symbol = st.sidebar.selectbox(
         "Select Symbol", 
         AVAILABLE_CURRENCIES,
@@ -893,13 +969,13 @@ def setup_sidebar():
     
     period = st.sidebar.selectbox(
         "Select data period", 
-        ["1d", "2d", "5d", "1wk", "1mo"],
+        ["1d", "5d", "1wk", "1mo", "3mo"],
         key="period_select"
     )
     
     interval = st.sidebar.selectbox(
         "Select interval", 
-        ["1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        ["1m", "5m", "15m", "1h", "4h", "1d"],
         key="interval_select"
     )
     
@@ -1006,125 +1082,16 @@ def display_dashboard(symbol, period, interval):
         return
     
     # ==============================
-    # PRICE PREDICTION SECTION
+    # TRADINGVIEW HUB
+    # ==============================
+    display_tradingview_widget(symbol)
+
+    # ==============================
+    # PRICE PREDICTION SECTION (PRO)
     # ==============================
     st.markdown("---")
-    st.subheader("🔮 Price Prediction")
-    
-    # Get current price for calculations
     current_price = float(display_data['Close'].iloc[-1])
-    
-    # ==============================
-    # ENHANCED PREDICTION SECTION
-    # ==============================
     display_enhanced_predictions(symbol, interval, training_data, current_price)
-
-    # --- Linear Regression prediction
-    if not training_data.empty:
-        linear_pred, linear_confidence, linear_time = predict_next_price_linear(training_data, interval)
-    else:
-        linear_pred, linear_confidence, linear_time = None, None, "No data"
-    
-    # --- LSTM prediction
-    lstm_pred, lstm_confidence, lstm_signal, lstm_error = predict_with_lstm(symbol, interval)
-    
-    # --- Layout for prediction display
-    pred_col1, pred_col2, pred_col3 = st.columns(3)
-
-    with pred_col1:
-        if linear_pred is not None:
-            pred_change = linear_pred - current_price
-            pred_change_pct = (pred_change / current_price) * 100
-            confidence_display = f"{linear_confidence*100:.1f}%" if linear_confidence else "N/A"
-            
-            st.metric(
-                label=f"📊 Linear Regression Confidence: {confidence_display}",
-                value=f"${linear_pred:,.5f}",
-                delta=f"{pred_change:+.5f} ({pred_change_pct:+.2f}%)",
-                help=f"Confidence: {confidence_display}"
-            )
-        else:
-            st.metric("📊 Linear Regression", "Calculating...")
-
-    with pred_col2:
-        if lstm_pred is not None:
-            pred_change = lstm_pred - current_price
-            pred_change_pct = (pred_change / current_price) * 100
-            confidence_display = f"{lstm_confidence*100:.1f}%" if lstm_confidence else "N/A"
-            
-            st.metric(
-                label="🧠 LSTM Pretrained "+f"Confidence: {confidence_display}",
-                value=f"${lstm_pred:,.5f}",
-                delta=f"{pred_change_pct:+.2f}% ({lstm_signal})",
-                help=f"Confidence: {confidence_display}"
-            )
-        else:
-            st.metric("🧠 LSTM Network", "No Model", help=lstm_error or "")
-
-    with pred_col3:
-        # Show current currency confidence if available
-        if symbol in st.session_state.currency_confidences:
-            confidence = st.session_state.currency_confidences[symbol] * 100
-            st.metric(
-                label="📈 Currency Confidence",
-                value=f"{confidence:.1f}%",
-                delta="High" if confidence >= 70 else "Medium" if confidence >= 50 else "Low"
-            )
-        else:
-            st.metric("📈 Currency Confidence", "Scanning...")
-
-    # ==============================
-    # KEY METRICS
-    # ==============================
-    st.markdown("---")
-    st.subheader("📊 Current Metrics")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    latest_price = current_price
-    previous_price = float(display_data['Close'].iloc[-2]) if len(display_data) > 1 else latest_price
-    price_change = latest_price - previous_price
-    price_change_pct = (price_change / previous_price) * 100
-    
-    with col1:
-        st.metric(
-            label="💰 Current Price",
-            value=f"${latest_price:,.5f}",
-            delta=f"{price_change:+.5f} ({price_change_pct:+.5f}%)"
-        )
-    
-    with col2:
-        period_high = float(display_data['High'].max())
-        st.metric("📈 Session High", f"${period_high:,.5f}")
-    
-    with col3:
-        period_low = float(display_data['Low'].min())
-        st.metric("📉 Session Low", f"${period_low:,.5f}")
-    
-    with col4:
-        volume = float(display_data['Volume'].iloc[-1]) if 'Volume' in display_data.columns else 0
-        st.metric("📦 Volume", f"{volume:,.0f}")
-    
-    # ==============================
-    # CANDLESTICK CHART
-    # ==============================
-    st.markdown("---")
-    st.subheader(f"📈 {interval} Candlestick Chart")
-    
-    plot_data = display_data.dropna(subset=['Open', 'High', 'Low', 'Close']).copy()
-    
-    if not plot_data.empty:
-        st.info(f"🕯️ Displaying {len(plot_data)} {interval} candles | Last: {plot_data.iloc[-1]['Close']:,.2f}")
-        
-        with st.container():
-            fig = create_enhanced_candlestick(plot_data, symbol, period, interval)
-            st.plotly_chart(fig, use_container_width=True, config={
-                'displayModeBar': True,
-                'displaylogo': False,
-                'scrollZoom': True,
-            })
-    else:
-        st.error("❌ No valid candle data available")
 
 # ==============================
 # Main execution
