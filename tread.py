@@ -339,13 +339,11 @@ def get_training_data(symbol, interval):
 # ==============================
 # TradingView Widget
 # ==============================
-def display_tradingview_widget(symbol):
-    """Embed official TradingView Advanced Charting Widget"""
-    # Smart mapping for TradingView
-    tv_symbol = symbol.upper()
-    exchange = "BINANCE" # Default for most crypto
-
-    # Alias mapping for yfinance symbols to TradingView symbols
+def get_tv_mapping(symbol):
+    """Smart mapping for TradingView symbols and exchanges"""
+    sym = symbol.upper()
+    
+    # Precise Aliases
     aliases = {
         "GLD": ("AMEX", "GLD"),
         "GOLD": ("OANDA", "XAUUSD"),
@@ -357,31 +355,36 @@ def display_tradingview_widget(symbol):
         "GBPUSD=X": ("FX", "GBPUSD"),
         "USDJPY=X": ("FX", "USDJPY"),
     }
+    
+    if sym in aliases:
+        return aliases[sym]
+    
+    # Generic Logic
+    if "USD" in sym:
+        # BTC-USD -> BINANCE:BTCUSDT
+        clean = sym.replace("-USD", "USDT").replace("-", "")
+        if "=X" in sym: return "FX", sym.replace("=X", "")
+        return "BINANCE", clean
+    
+    if "=X" in sym:
+        return "FX", sym.replace("=X", "")
+        
+    return "COINBASE", sym.replace("-", "")
 
-    if tv_symbol in aliases:
-        exchange, tv_symbol = aliases[tv_symbol]
-    elif "USD" in symbol:
-        if "=X" in symbol:
-            exchange = "FX"
-            tv_symbol = symbol.replace("=X", "").replace("-", "")
-        else:
-            exchange = "BINANCE"
-            tv_symbol = symbol.replace("-USD", "USDT").replace("-", "")
-    elif "=X" in symbol:
-        exchange = "FX"
-        tv_symbol = symbol.replace("=X", "").replace("-", "")
-    else:
-        # Fallback for generic symbols
-        exchange = "COINBASE"
-        tv_symbol = symbol.replace("-USD", "USDT").replace("-", "")
+def display_tradingview_widget(symbol):
+    """Embed official TradingView Advanced Charting Widget"""
+    exchange, tv_symbol = get_tv_mapping(symbol)
 
     st.markdown("---")
     st.subheader(f"📊 TradingView Live Chart: {symbol}")
     
-    # TradingView Widget HTML
+    # Note for user about sync
+    st.caption("💡 **Note:** Changes made *inside* this chart (like clicking symbols) don't update the models above. Use the Sidebar to analyze a new trade.")
+    
+    # TradingView Widget HTML (90vh height optimization)
     tv_html = f"""
-    <div style="height:1000px; width:100%; margin-bottom: 20px;">
-      <div id="tradingview_chart" style="height:1000px;"></div>
+    <div style="height:85vh; width:100%;">
+      <div id="tradingview_chart" style="height:100%;"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
       new TradingView.widget({{
@@ -408,7 +411,8 @@ def display_tradingview_widget(symbol):
       </script>
     </div>
     """
-    st.components.v1.html(tv_html, height=1050)
+    st.components.v1.html(tv_html, height=800)
+    
 
 def calculate_indicators(data):
     """Calculate professional technical indicators"""
@@ -1161,16 +1165,20 @@ def display_dashboard(symbol, period, interval):
         return
     
     # ==============================
-    # TRADINGVIEW HUB
+    # 2. PRICE PREDICTION SECTION (PRO)
     # ==============================
-    display_tradingview_widget(symbol)
+    # Moved to top for instant visibility
+    try:
+        current_price = float(display_data['Close'].iloc[-1])
+        display_enhanced_predictions(symbol, interval, training_data, current_price)
+    except Exception as e:
+        st.error(f"⚠️ Signal Engine Error: {e}")
+        st.info("💡 Retrying prediction analysis...")
 
     # ==============================
-    # PRICE PREDICTION SECTION (PRO)
+    # 3. TRADINGVIEW HUB
     # ==============================
-    st.markdown("---")
-    current_price = float(display_data['Close'].iloc[-1])
-    display_enhanced_predictions(symbol, interval, training_data, current_price)
+    display_tradingview_widget(symbol)
 
 # ==============================
 # Main execution
