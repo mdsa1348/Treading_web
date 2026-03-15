@@ -18,6 +18,7 @@ from sklearn.svm import SVR
 from xgboost import XGBRegressor
 from sklearn.ensemble import RandomForestRegressor
 import requests
+import json
 from sklearn.metrics import r2_score
 
 import warnings
@@ -58,14 +59,34 @@ if 'initial_scan_complete' not in st.session_state:
     st.session_state.initial_scan_complete = False
 
 # ==============================
-# Available currencies for scanning
+# Permanent Storage for Symbols
 # ==============================
+SAVED_SYMBOLS_FILE = "saved_symbols.json"
+
+def load_saved_symbols():
+    if os.path.exists(SAVED_SYMBOLS_FILE):
+        try:
+            with open(SAVED_SYMBOLS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_custom_symbols(symbols):
+    try:
+        with open(SAVED_SYMBOLS_FILE, "w") as f:
+            json.dump(symbols, f)
+    except Exception as e:
+        print(f"Error saving symbols: {e}")
+
+# Initialize custom symbols from permanent storage
+if 'custom_symbols' not in st.session_state:
+    st.session_state.custom_symbols = load_saved_symbols()
+
 DEFAULT_CURRENCIES = [
     "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOT-USD", "BNB-USD", "AVAX-USD", "LINK-USD", "LTC-USD",
     "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X", "XAGUSD=X"
 ]
-if 'custom_symbols' not in st.session_state:
-    st.session_state.custom_symbols = []
 
 AVAILABLE_CURRENCIES = list(dict.fromkeys(DEFAULT_CURRENCIES + st.session_state.custom_symbols))
 
@@ -1042,7 +1063,19 @@ def setup_sidebar():
             
             if norm_sym not in st.session_state.custom_symbols:
                 st.session_state.custom_symbols.append(norm_sym)
+                save_custom_symbols(st.session_state.custom_symbols)
                 st.rerun()
+
+    # Manual Removal Support
+    if st.session_state.custom_symbols:
+        with st.sidebar.expander("🗑️ Manage Custom List"):
+            for sym in st.session_state.custom_symbols:
+                col1, col2 = st.columns([3, 1])
+                col1.write(sym)
+                if col2.button("X", key=f"del_{sym}"):
+                    st.session_state.custom_symbols.remove(sym)
+                    save_custom_symbols(st.session_state.custom_symbols)
+                    st.rerun()
 
     symbol = st.sidebar.selectbox(
         "Select Symbol", 
