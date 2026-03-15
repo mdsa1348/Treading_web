@@ -59,6 +59,27 @@ if 'initial_scan_complete' not in st.session_state:
     st.session_state.initial_scan_complete = False
 
 # ==============================
+# Universal Symbol Normalizer
+# ==============================
+def normalize_ticker(symbol):
+    """Convert user-friendly names into valid Yahoo Finance tickers"""
+    sym = symbol.upper().strip()
+    
+    # Gold & Silver
+    if sym in ["GOLD", "XAU", "XAUUSD"]: return "XAUUSD=X"
+    if sym in ["SILVER", "XAG", "XAGUSD"]: return "XAGUSD=X"
+    
+    # Forex
+    forex_pairs = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "NZDUSD", "USDCAD"]
+    if sym in forex_pairs: return sym + "=X"
+    
+    # Crypto (ensure -USD if missing for common coins)
+    crypto_shorts = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOT", "DOGE", "AVAX", "LINK", "MATIC"]
+    if sym in crypto_shorts: return sym + "-USD"
+    
+    return sym
+
+# ==============================
 # Permanent Storage for Symbols
 # ==============================
 SAVED_SYMBOLS_FILE = "saved_symbols.json"
@@ -143,6 +164,7 @@ def display_refresh_timer():
 # ==============================
 def scan_currency_confidence(symbol, interval='15m'):
     """Scan confidence for a single currency"""
+    symbol = normalize_ticker(symbol)
     try:
         # Fetch training data with error handling
         training_period = "5d" if interval == "1m" else "1wk"
@@ -290,6 +312,7 @@ def display_top_currencies():
 # ==============================
 def get_crypto_data(symbol, period, interval):
     """Fetch crypto data with cache busting for instant updates"""
+    symbol = normalize_ticker(symbol)
     try:
         @st.cache_data(ttl=25)
         def _fetch_data(_symbol, _period, _interval):
@@ -331,6 +354,7 @@ def get_crypto_data(symbol, period, interval):
 # ==============================
 def get_training_data(symbol, interval):
     """Always fetch 1 week of data for model training"""
+    symbol = normalize_ticker(symbol)
     try:
         # Skip problematic symbols
         if symbol == "MATIC-USD":
@@ -1055,11 +1079,7 @@ def setup_sidebar():
     custom_sym = st.sidebar.text_input("🔍 Search Any Pair (e.g. SOL-USD, XAUUSD, EURUSD)", "").upper()
     if st.sidebar.button("➕ Add to Dashboard"):
         if custom_sym:
-            # Normalize for yfinance
-            norm_sym = custom_sym
-            if norm_sym in ["GOLD", "XAU", "XAUUSD"]: norm_sym = "XAUUSD=X"
-            if norm_sym in ["SILVER", "XAG", "XAGUSD"]: norm_sym = "XAGUSD=X"
-            if norm_sym in ["EURUSD", "GBPUSD", "USDJPY"] and "=X" not in norm_sym: norm_sym += "=X"
+            norm_sym = normalize_ticker(custom_sym)
             
             if norm_sym not in st.session_state.custom_symbols:
                 st.session_state.custom_symbols.append(norm_sym)
