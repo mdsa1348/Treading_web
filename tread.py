@@ -355,7 +355,7 @@ def display_tradingview_widget(symbol):
     
     # TradingView Widget HTML
     tv_html = f"""
-    <div class="tradingview-widget-container" style="height:600px; width:100%;">
+    <div class="tradingview-widget-container" style="height:800px; width:100%;">
       <div id="tradingview_chart"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
@@ -376,7 +376,7 @@ def display_tradingview_widget(symbol):
       </script>
     </div>
     """
-    st.components.v1.html(tv_html, height=620)
+    st.components.v1.html(tv_html, height=820)
 
 def calculate_indicators(data):
     """Calculate professional technical indicators"""
@@ -829,18 +829,18 @@ def display_enhanced_predictions(symbol, interval, training_data, current_price)
     
     # 1. Market Sentiment Header
     fng_value, fng_class = get_fear_greed_index()
-    fng_color = "#00C805" if int(fng_value) > 60 else ("#FF2E2E" if int(fng_value) < 40 else "#FFA500")
     
     col_a, col_b = st.columns([2, 1])
     with col_a:
         st.subheader("🔮 Strategic Signal Room")
     with col_b:
-        st.markdown(f"""
-        <div style="text-align:right; padding:5px; border-radius:5px; border:1px solid {fng_color};">
-            <span style="color:gray; font-size:12px;">Fear & Greed Index:</span><br>
-            <b style="color:{fng_color}; font-size:18px;">{fng_value} - {fng_class}</b>
-        </div>
-        """, unsafe_allow_with_html=True)
+        # Using built-in st.metric for stability instead of HTML injection
+        st.metric(
+            label="Fear & Greed Index", 
+            value=f"{fng_value}", 
+            delta=f"{fng_class}",
+            delta_color="normal"
+        )
 
     # 2. Analysis
     df_with_inds = calculate_indicators(training_data)
