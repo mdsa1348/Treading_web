@@ -17,6 +17,7 @@ import os
 from sklearn.svm import SVR
 from xgboost import XGBRegressor
 from sklearn.ensemble import RandomForestRegressor
+import requests
 from sklearn.metrics import r2_score
 
 import warnings
@@ -417,10 +418,11 @@ def calculate_indicators(data):
 def get_fear_greed_index():
     """Fetch the Crypto Fear & Greed Index"""
     try:
-        import requests
-        response = requests.get("https://api.alternative.me/fng/")
+        response = requests.get("https://api.alternative.me/fng/", timeout=5)
         data = response.json()
-        return data['data'][0]['value'], data['data'][0]['value_classification']
+        val = data['data'][0]['value']
+        cls = data['data'][0]['value_classification']
+        return str(val) if val is not None else "50", str(cls) if cls is not None else "Neutral"
     except:
         return "50", "Neutral"
 
@@ -842,10 +844,20 @@ def display_enhanced_predictions(symbol, interval, training_data, current_price)
 
     # 2. Analysis
     df_with_inds = calculate_indicators(training_data)
-    current_atr = df_with_inds['ATR'].iloc[-1] if 'ATR' in df_with_inds.columns else current_price * 0.01
-    current_rsi = df_with_inds['RSI'].iloc[-1] if 'RSI' in df_with_inds.columns else 50
+    
+    # Safety Check: Empty Data
+    if df_with_inds.empty or len(df_with_inds) < 20:
+        st.warning("🔄 Collecting more market data for advanced analysis... (Need at least 20 candles)")
+        return
+
+    current_atr = df_with_inds['ATR'].iloc[-1]
+    current_rsi = df_with_inds['RSI'].iloc[-1]
     macd_val = df_with_inds['MACD'].iloc[-1]
     sig_line = df_with_inds['Signal_Line'].iloc[-1]
+    
+    # Handle NaNs
+    current_atr = current_atr if not np.isnan(current_atr) else current_price * 0.01
+    current_rsi = current_rsi if not np.isnan(current_rsi) else 50
     
     ml_predictions = predict_with_multiple_models(training_data, current_price, interval)
     
@@ -855,28 +867,28 @@ def display_enhanced_predictions(symbol, interval, training_data, current_price)
         buy_votes = sum(1 for p in ml_predictions.values() if p['signal'] == 'BUY 🟢')
         total_models = len(ml_predictions)
         
-        # CONFLUENCE SCORE (The "Tactics" part)
+        # CONFLUENCE SCORE
         score = 0
         if buy_votes >= total_models/2: score += 40
-        if current_rsi < 35: score += 20 # Oversold Buy
-        if current_rsi > 65: score -= 20 # Overbought Sell
-        if macd_val > sig_line: score += 20 # Bullish Momentum
-        if int(fng_value) > 70: score -= 10 # Caution: Bubble
-        if int(fng_value) < 30: score += 10 # Opportunity: Panic
+        if current_rsi < 35: score += 20 
+        if current_rsi > 65: score -= 20 
+        if macd_val > sig_line: score += 20 
         
-        # Normalize and set Verdict
-        score = max(0, min(100, score + 20)) # Base 20
+        try:
+            fng_int = int(fng_value) if fng_value and str(fng_value).isdigit() else 50
+            if fng_int > 70: score -= 10 
+            if fng_int < 30: score += 10
+        except:
+            pass
         
-        if score > 75: 
-            verdict, color, action = "🔥 STRONG BUY", "#00C805", "BUY 🟢"
-        elif score > 55: 
-            verdict, color, action = "⚡ MODERATE BUY", "#90EE90", "BUY 🟢"
-        elif score < 25: 
-            verdict, color, action = "🔻 STRONG SELL", "#FF2E2E", "SELL 🔴"
-        elif score < 45: 
-            verdict, color, action = "📉 MODERATE SELL", "#FF7F7F", "SELL 🔴"
-        else:
-            verdict, color, action = "⚖️ NEUTRAL / WAIT", "#FFA500", "WAIT 🟡"
+        # Normalize
+        score = max(0, min(100, score + 20)) 
+        
+        if score > 75: verdict, color, action = "🔥 STRONG BUY", "#00C805", "BUY 🟢"
+        elif score > 55: verdict, color, action = "⚡ MODERATE BUY", "#90EE90", "BUY 🟢"
+        elif score < 25: verdict, color, action = "🔻 STRONG SELL", "#FF2E2E", "SELL 🔴"
+        elif score < 45: verdict, color, action = "📉 MODERATE SELL", "#FF7F7F", "SELL 🔴"
+        else: verdict, color, action = "⚖️ NEUTRAL / WAIT", "#FFA500", "WAIT 🟡"
 
         # Trade Plan
         risk_multiplier = 1.5
@@ -902,19 +914,19 @@ def display_enhanced_predictions(symbol, interval, training_data, current_price)
         col1, col2, col3 = st.columns(3)
         with col1: st.metric("🎯 Entry", f"${current_price:,.4f}", f"Signal: {action}")
         with col2: 
-            st.write("**Target Goals:**")
-            st.success(f"TP 🟢: **${tp1:,.4f}**")
-            st.success(f"TP 🚀: **${tp2:,.4f}**")
+            st.write("**Target Goals (TP):**")
+            st.success(f"TP1: **${tp1:,.4f}**")
+            st.success(f"TP2: **${tp2:,.4f}**")
         with col3:
-            st.write("**Protection:**")
-            st.error(f"SL 🛑: **${sl:,.4f}**")
-            st.info(f"Risk/Reward: 1:2.0")
+            st.write("**Safety (SL):**")
+            st.error(f"SL: **${sl:,.4f}**")
+            st.info(f"R:R Target: 1:2.0")
 
-        with st.expander("🛠️ Why this signal? (Technical Confluence)"):
-            st.write(f"- **Models:** {buy_votes}/{total_models} models favor upside.")
-            st.write(f"- **RSI:** {current_rsi:.2f} ({'Oversold' if current_rsi<30 else 'Overbought' if current_rsi>70 else 'Neutral'})")
-            st.write(f"- **MACD:** {'Crossing Up' if macd_val > sig_line else 'Crossing Down'} (Trend change).")
-            st.write(f"- **Volatility:** Measured by ATR (${current_atr:.4f}) used for SL placement.")
+        with st.expander("🛠️ Signal Analysis Details"):
+            st.write(f"- **Model Consensus:** {buy_votes}/{total_models} models favor upside.")
+            st.write(f"- **RSI indicator:** {current_rsi:.2f}")
+            st.write(f"- **MACD Trend:** {'Bullish' if macd_val > sig_line else 'Bearish'}")
+            st.write(f"- **Market Volatility:** {current_atr/current_price * 100:.2f}%")
     else:
         st.info("🔄 Running multi-model technical analysis...")
 
