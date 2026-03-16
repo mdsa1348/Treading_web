@@ -148,16 +148,23 @@ def save_user_settings(settings):
     except Exception as e:
         pass
 
-# Initialize custom symbols from permanent storage
-if 'custom_symbols' not in st.session_state:
-    st.session_state.custom_symbols = load_saved_symbols()
+# Initialize symbols list with persistence
+if 'active_symbols' not in st.session_state:
+    saved = load_saved_symbols()
+    if saved:
+        st.session_state.active_symbols = saved
+    else:
+        # Initial default list
+        st.session_state.active_symbols = [
+            "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOT-USD", "BNB-USD", "AVAX-USD", "LINK-USD", "LTC-USD",
+            "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X", "XAGUSD=X"
+        ]
 
-DEFAULT_CURRENCIES = [
-    "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOT-USD", "BNB-USD", "AVAX-USD", "LINK-USD", "LTC-USD",
-    "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X", "XAGUSD=X"
-]
+# Helper to get current list (for compatibility)
+def get_available_currencies():
+    return st.session_state.active_symbols
 
-AVAILABLE_CURRENCIES = list(dict.fromkeys(DEFAULT_CURRENCIES + st.session_state.custom_symbols))
+AVAILABLE_CURRENCIES = get_available_currencies()
 
 # ==============================
 # Timer display function
@@ -1198,22 +1205,21 @@ def setup_sidebar():
     if st.sidebar.button("➕ Add to Dashboard"):
         if custom_sym:
             norm_sym = normalize_ticker(custom_sym)
-            
-            if norm_sym not in st.session_state.custom_symbols:
-                st.session_state.custom_symbols.append(norm_sym)
-                save_custom_symbols(st.session_state.custom_symbols)
+            if norm_sym not in st.session_state.active_symbols:
+                st.session_state.active_symbols.append(norm_sym)
+                save_custom_symbols(st.session_state.active_symbols)
                 st.rerun()
 
-    # Manual Removal Support
-    if st.session_state.custom_symbols:
-        with st.sidebar.expander("🗑️ Manage Custom List"):
-            for sym in st.session_state.custom_symbols:
-                col1, col2 = st.columns([3, 1])
-                col1.write(sym)
-                if col2.button("X", key=f"del_{sym}"):
-                    st.session_state.custom_symbols.remove(sym)
-                    save_custom_symbols(st.session_state.custom_symbols)
-                    st.rerun()
+    # Enhanced Global Symbol Management
+    with st.sidebar.expander("🗑️ Manage Active Symbols"):
+        st.write("Remove symbols to speed up analysis:")
+        for sym in st.session_state.active_symbols:
+            col1, col2 = st.columns([4, 1])
+            col1.write(sym)
+            if col2.button("X", key=f"hide_{sym}"):
+                st.session_state.active_symbols.remove(sym)
+                save_custom_symbols(st.session_state.active_symbols)
+                st.rerun()
 
     # Define options
     period_options = ["1d", "5d", "1wk", "1mo", "3mo"]
@@ -1405,7 +1411,7 @@ def main():
     # Display main dashboard
     display_dashboard(symbol, period, interval)
     
-      # Check if refresh is needed
+    # Check if refresh is needed
     check_and_refresh()
 
     # Timer and refresh info in sidebar
@@ -1415,14 +1421,16 @@ def main():
     now = datetime.datetime.now()
     time_until_next = st.session_state.next_refresh - now
     
+    # Re-calculate Available Currencies for the sidebar display
+    current_avail = st.session_state.active_symbols
+
     st.sidebar.info(f"""
     **Current Status:**
+    - Active Symbols: {len(current_avail)}
     - Last Refresh: {st.session_state.last_refresh.strftime('%H:%M:%S')}
     - Next Refresh: {st.session_state.next_refresh.strftime('%H:%M:%S')}
     - Time Until: {int(time_until_next.total_seconds()) if time_until_next.total_seconds() > 0 else 0}s
-    - Total Refreshes: {st.session_state.refresh_count}
     - Auto-refresh: {'✅ ON' if auto_refresh else '❌ OFF'}
-    - Refresh Interval: {refresh_interval}s
     """)
     
     # Show last scan time if available
