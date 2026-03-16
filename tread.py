@@ -25,37 +25,34 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================
-# Global Session for Rate Limiting
+# Helper for Data Handling
 # ==============================
-session = requests.Session()
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-})
+def safe_yf_download(ticker, period=None, interval=None, start=None, end=None, retries=2):
+    """Download data from Yahoo Finance with simple retries and period fallback"""
+    ticker = ticker.strip()
+    
+    # Simple list of periods to try
+    periods = [period] if period else ["1wk", "5d", "1d"]
+    if period and period not in ["1d", "2d"]:
+        periods.append("1d")
 
-def safe_yf_download(ticker, period=None, interval=None, start=None, end=None, retries=3):
-    """Download data from Yahoo Finance with retries and backoff for rate limiting"""
-    for i in range(retries):
-        try:
-            data = yf.download(
-                tickers=ticker, 
-                period=period, 
-                interval=interval, 
-                start=start, 
-                end=end, 
-                progress=False, 
-                session=session
-            )
-            if not data.empty:
-                return data
-            # If data is empty, it might be a temporary error
-            time.sleep(1 * (i + 1))
-        except Exception as e:
-            if "Too Many Requests" in str(e) or "429" in str(e):
-                # Exponential backoff
-                wait_time = (2 ** i) + np.random.uniform(0, 1)
-                time.sleep(wait_time)
-            else:
+    for p in periods:
+        for i in range(retries):
+            try:
+                # Standard download - sometimes works best without complex sessions
+                data = yf.download(
+                    tickers=ticker, 
+                    period=p, 
+                    interval=interval, 
+                    start=start, 
+                    end=end, 
+                    progress=False
+                )
+                if not data.empty and len(data) > 0:
+                    return data
                 time.sleep(1)
+            except Exception:
+                time.sleep(2)
     return pd.DataFrame()
 
 # ==============================
@@ -1345,8 +1342,11 @@ def display_dashboard(symbol, period, interval):
     training_data = get_training_data(symbol, interval)
     
     if display_data.empty:
-        st.error(f"❌ No {interval} data available for {symbol}.")
-        st.info("💡 Try 5m or 15m intervals if 1m doesn't work")
+        st.error(f"❌ No {interval} data available for {symbol} at the moment.")
+        st.warning("⚠️ **Yahoo Finance Rate Limit Detected:** You are making requests too quickly. Wait 2-5 minutes or try a larger interval (1h or 1d).")
+        if st.button("🔄 Clear Cache & Retry"):
+            st.cache_data.clear()
+            st.rerun()
         return
     
     # Display current time and status
