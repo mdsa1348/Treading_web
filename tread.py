@@ -726,6 +726,11 @@ def predict_with_multiple_models(training_data, current_price, interval):
         
         if len(X) < 10:
             return {}
+            
+        # FAST PERFORMANCE: Cap data for web stability
+        if len(X) > 1000:
+            X = X[-1000:]
+            y = y[-1000:]
         
         # DATA CLEANING
         def clean_data_robust(X_data, y_data):
@@ -800,7 +805,7 @@ def predict_with_multiple_models(training_data, current_price, interval):
                 learning_rate=0.1,
                 random_state=42
             ),
-            'SVM': SVR(kernel='rbf', C=1e6, epsilon=0.001, gamma='scale'),
+            'SVM': SVR(kernel='rbf', C=1e6, epsilon=0.001, gamma='scale', max_iter=1000),
             'Linear Regression': LinearRegression()
         }
         
