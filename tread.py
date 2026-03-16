@@ -1203,8 +1203,17 @@ def display_dashboard(symbol, period, interval):
     
     # Display current time and status
     current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    st.write(f"**🕒 Current Time:** {current_time}")
-    st.write(f"**📈 Display:** {len(display_data)} {interval} candles | **Period:** {period}")
+    st.write(f"**🕒 Current Clock:** {current_time}")
+    
+    # Show exactly which candle the analysis is using
+    if not display_data.empty:
+        time_col = 'Datetime' if 'Datetime' in display_data.columns else 'Date'
+        if time_col in display_data.columns:
+            latest_point = display_data[time_col].iloc[-1]
+            latest_str = latest_point.strftime('%Y-%m-%d %H:%M:%S') if hasattr(latest_point, 'strftime') else str(latest_point)
+            st.write(f"**📊 Analysis Based on Data Up To:** `{latest_str}`")
+
+    st.write(f"**📈 Displaying:** {len(display_data)} {interval} candles | **Period:** {period}")
     
     if not training_data.empty:
         st.write(f"**🤖 Training:** {len(training_data)} points (1 week)")
