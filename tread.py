@@ -491,7 +491,7 @@ def display_tradingview_widget(symbol):
       new TradingView.widget({{
         "autosize": true,
         "symbol": "{exchange}:{tv_symbol}",
-        "interval": "15",
+        "interval": "5",
         "timezone": "Etc/UTC",
         "theme": "dark",
         "style": "1",
