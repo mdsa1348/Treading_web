@@ -25,6 +25,40 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================
+# Global Session for Rate Limiting
+# ==============================
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+})
+
+def safe_yf_download(ticker, period=None, interval=None, start=None, end=None, retries=3):
+    """Download data from Yahoo Finance with retries and backoff for rate limiting"""
+    for i in range(retries):
+        try:
+            data = yf.download(
+                tickers=ticker, 
+                period=period, 
+                interval=interval, 
+                start=start, 
+                end=end, 
+                progress=False, 
+                session=session
+            )
+            if not data.empty:
+                return data
+            # If data is empty, it might be a temporary error
+            time.sleep(1 * (i + 1))
+        except Exception as e:
+            if "Too Many Requests" in str(e) or "429" in str(e):
+                # Exponential backoff
+                wait_time = (2 ** i) + np.random.uniform(0, 1)
+                time.sleep(wait_time)
+            else:
+                time.sleep(1)
+    return pd.DataFrame()
+
+# ==============================
 # Streamlit page config
 # ==============================
 st.set_page_config(
@@ -179,6 +213,7 @@ def display_refresh_timer():
 # ==============================
 # Currency Confidence Scanner
 # ==============================
+@st.cache_data(ttl=600)  # Cache scanner data for 10 minutes
 def scan_currency_confidence(symbol, interval='15m'):
     """Scan confidence for a single currency"""
     symbol = normalize_ticker(symbol)
@@ -190,7 +225,7 @@ def scan_currency_confidence(symbol, interval='15m'):
         if symbol == "MATIC-USD":
             return 0.0
             
-        data = yf.download(tickers=symbol, period=training_period, interval=interval, progress=False)
+        data = safe_yf_download(ticker=symbol, period=training_period, interval=interval)
         
         if data.empty or len(data) < 10:
             return 0.0
@@ -250,6 +285,8 @@ def scan_all_currencies():
         confidence = scan_currency_confidence(symbol)
         confidences[symbol] = confidence
         progress_bar.progress((i + 1) / len(AVAILABLE_CURRENCIES))
+        # Add a small delay between requests to avoid rate limiting
+        time.sleep(0.2)
     
     status_text.text("✅ Scan complete!")
     time.sleep(1)  # Show completion message briefly
@@ -328,10 +365,10 @@ def display_top_currencies():
 # Enhanced data fetching with instant updates
 # ==============================
 def get_crypto_data(symbol, period, interval):
-    """Fetch crypto data with cache busting for instant updates"""
+    """Fetch crypto data with cache boosting for instant updates"""
     symbol = normalize_ticker(symbol)
     try:
-        @st.cache_data(ttl=25)
+        @st.cache_data(ttl=60)  # Increased TTL to 60s
         def _fetch_data(_symbol, _period, _interval):
             # Skip problematic symbols
             if _symbol == "MATIC-USD":
@@ -341,13 +378,13 @@ def get_crypto_data(symbol, period, interval):
             if _interval == "1m":
                 try:
                     if _period in ["1mo", "1wk", "5d"]:
-                        data = yf.download(tickers=_symbol, period="7d", interval=_interval, progress=False)
+                        data = safe_yf_download(ticker=_symbol, period="7d", interval=_interval)
                     else:
-                        data = yf.download(tickers=_symbol, period=_period, interval=_interval, progress=False)
+                        data = safe_yf_download(ticker=_symbol, period=_period, interval=_interval)
                 except:
-                    data = yf.download(tickers=_symbol, period="5d", interval=_interval, progress=False)
+                    data = safe_yf_download(ticker=_symbol, period="5d", interval=_interval)
             else:
-                data = yf.download(tickers=_symbol, period=_period, interval=_interval, progress=False)
+                data = safe_yf_download(ticker=_symbol, period=_period, interval=_interval)
             
             if data.empty:
                 return pd.DataFrame()
@@ -379,9 +416,9 @@ def get_training_data(symbol, interval):
             
         training_period = "5d" if interval == "1m" else "1wk"
         
-        @st.cache_data(ttl=300)
+        @st.cache_data(ttl=900)  # Increased TTL to 15 minutes
         def _fetch_training_data(_symbol, _interval, _training_period):
-            return yf.download(tickers=_symbol, period=_training_period, interval=_interval, progress=False)
+            return safe_yf_download(ticker=_symbol, period=_training_period, interval=_interval)
         
         training_data = _fetch_training_data(symbol, interval, training_period)
         
@@ -614,7 +651,7 @@ def predict_with_lstm(symbol, interval, model_dir=MODEL_DIR, sequence_length=20)
         # Fetch recent data (2 days)
         end = datetime.datetime.now()
         start = end - datetime.timedelta(days=2)
-        data = yf.download(symbol, start=start, end=end, interval=interval, progress=False)
+        data = safe_yf_download(ticker=symbol, start=start, end=end, interval=interval)
 
         if data.empty:
             return None, None, None, f"No data for {symbol} ({interval})"
