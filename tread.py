@@ -83,6 +83,7 @@ def normalize_ticker(symbol):
 # Permanent Storage for Symbols
 # ==============================
 SAVED_SYMBOLS_FILE = "saved_symbols.json"
+SAVED_SETTINGS_FILE = "user_settings.json"
 
 def load_saved_symbols():
     if os.path.exists(SAVED_SYMBOLS_FILE):
@@ -99,6 +100,22 @@ def save_custom_symbols(symbols):
             json.dump(symbols, f)
     except Exception as e:
         print(f"Error saving symbols: {e}")
+
+def load_user_settings():
+    if os.path.exists(SAVED_SETTINGS_FILE):
+        try:
+            with open(SAVED_SETTINGS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_user_settings(settings):
+    try:
+        with open(SAVED_SETTINGS_FILE, "w") as f:
+            json.dump(settings, f)
+    except Exception as e:
+        pass
 
 # Initialize custom symbols from permanent storage
 if 'custom_symbols' not in st.session_state:
@@ -742,7 +759,7 @@ def predict_with_multiple_models(training_data, current_price, interval):
                 learning_rate=0.1,
                 random_state=42
             ),
-            'SVM': SVR(kernel='rbf', C=1.0, epsilon=0.1),
+            'SVM': SVR(kernel='rbf', C=1e6, epsilon=0.001, gamma='scale'),
             'Linear Regression': LinearRegression()
         }
         
@@ -751,23 +768,38 @@ def predict_with_multiple_models(training_data, current_price, interval):
         for name, model in models.items():
             try:
                 # Train model
-                if name in ['SVM', 'Linear Regression']:
+                if name == 'SVM':
+                    # SPECIAL HANDLING FOR SVM: Needs Target Scaling (y-scaling)
+                    y_scaler = StandardScaler()
+                    y_train_scaled = y_scaler.fit_transform(y_train.reshape(-1, 1)).flatten()
+                    
+                    model.fit(X_train_scaled, y_train_scaled)
+                    
+                    # Predict on test set for confidence
+                    y_pred_scaled = model.predict(X_test_scaled)
+                    y_pred_test = y_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
+                    
+                    # Predict next price
+                    latest_features = data[available_features].iloc[-1].values.reshape(1, -1)
+                    latest_scaled = scaler.transform(latest_features)
+                    next_price_scaled = model.predict(latest_scaled)
+                    next_price = float(y_scaler.inverse_transform(next_price_scaled.reshape(-1, 1))[0][0])
+                
+                elif name == 'Linear Regression':
                     model.fit(X_train_scaled, y_train)
                     y_pred_test = model.predict(X_test_scaled)
                     
                     latest_features = data[available_features].iloc[-1].values.reshape(1, -1)
-                    latest_df = pd.DataFrame(latest_features, columns=available_features)
-                    latest_clean = latest_df.values.astype(np.float64)
-                    latest_scaled = scaler.transform(latest_clean)
-                    next_price = model.predict(latest_scaled)[0]
+                    latest_scaled = scaler.transform(latest_features)
+                    next_price = float(model.predict(latest_scaled)[0])
+                
                 else:
+                    # Random Forest / XGBoost don't require scaled X or y but work fine with it
                     model.fit(X_train, y_train)
                     y_pred_test = model.predict(X_test)
                     
                     latest_features = data[available_features].iloc[-1].values.reshape(1, -1)
-                    latest_df = pd.DataFrame(latest_features, columns=available_features)
-                    latest_clean = latest_df.values.astype(np.float64)
-                    next_price = model.predict(latest_clean)[0]
+                    next_price = float(model.predict(latest_features)[0])
                 
                 # ENHANCED REALISTIC CONFIDENCE CALCULATION
                 confidence = 0.5  # Start with neutral confidence
@@ -980,10 +1012,64 @@ def display_enhanced_predictions(symbol, interval, training_data, current_price)
             tp1, tp2 = current_price - (risk_multiplier * current_atr), current_price - (3 * current_atr)
             sl = current_price + (2 * current_atr)
 
-        # Strategic Layout using st.container and st.columns (SAFE FROM TYPEERRORS)
+        # 3. High-Impact Signal Banner (MATCHING SCREENSHOT)
+        timeframes = {
+            '1m': 'Next 60 Seconds',
+            '5m': 'Next 5 Minutes',
+            '15m': 'Next 15 Minutes',
+            '30m': 'Next 30 Minutes',
+            '1h': 'Next 1 Hour',
+            '4h': 'Next 4 Hours',
+            '1d': 'Next 1 Day'
+        }
+        current_timeframe = timeframes.get(interval, f"Next {interval}")
+
+        st.markdown(f"""
+            <style>
+                .signal-banner {{
+                    background-color: {color};
+                    padding: 20px;
+                    border-radius: 10px;
+                    text-align: left;
+                    margin-bottom: 10px;
+                    border-left: 10px solid rgba(0,0,0,0.2);
+                }}
+                .signal-text {{
+                    color: {"#FFFFFF" if action != "WAIT 🟡" else "#000000"};
+                    font-size: 28px;
+                    font-weight: bold;
+                    margin: 0;
+                }}
+                .timeframe-badge {{
+                    display: inline-block;
+                    background-color: rgba(255,255,255,0.2);
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-size: 14px;
+                    margin-top: 5px;
+                }}
+                .confluence-bar {{
+                    background-color: #0e1117;
+                    padding: 8px 15px;
+                    border-radius: 5px;
+                    color: #4A90E2;
+                    font-weight: bold;
+                    font-size: 14px;
+                    border: 1px solid #1f2937;
+                }}
+            </style>
+            <div class="signal-banner">
+                <p class="signal-text">{verdict}</p>
+                <div class="timeframe-badge">⏳ Forecast Window: {current_timeframe}</div>
+            </div>
+            <div class="confluence-bar">
+                Confluence Score: {score}/100
+            </div>
+            <br>
+        """, unsafe_allow_html=True)
+        
+        # Big Signal Row
         with st.container():
-            st.success(f"### {verdict}")
-            st.info(f"**Confluence Score:** {score}/100")
             
             # Big Signal Row
             sig_col1, sig_col2, sig_col3, sig_col4 = st.columns(4)
@@ -1068,11 +1154,9 @@ def check_and_refresh():
 # ==============================
 def setup_sidebar():
     st.sidebar.header("Dashboard Settings")
-
-    # Store previous values to detect changes
-    prev_symbol = st.session_state.get('prev_symbol', '')
-    prev_period = st.session_state.get('prev_period', '')
-    prev_interval = st.session_state.get('prev_interval', '')
+    
+    # Load perspective from permanent storage
+    persisted = load_user_settings()
     
     # Custom Symbol Support
     st.sidebar.markdown("---")
@@ -1097,31 +1181,58 @@ def setup_sidebar():
                     save_custom_symbols(st.session_state.custom_symbols)
                     st.rerun()
 
+    # Define options
+    period_options = ["1d", "5d", "1wk", "1mo", "3mo"]
+    interval_options = ["1m", "5m", "15m", "1h", "4h", "1d"]
+
+    # Calculate default indices based on persistence
+    def_sym_idx = 0
+    if persisted.get('symbol') in AVAILABLE_CURRENCIES:
+        def_sym_idx = AVAILABLE_CURRENCIES.index(persisted.get('symbol'))
+        
+    def_period_idx = 1 # Default 5d
+    if persisted.get('period') in period_options:
+        def_period_idx = period_options.index(persisted.get('period'))
+        
+    def_interval_idx = 2 # Default 15m
+    if persisted.get('interval') in interval_options:
+        def_interval_idx = interval_options.index(persisted.get('interval'))
+
     symbol = st.sidebar.selectbox(
         "Select Symbol", 
         AVAILABLE_CURRENCIES,
+        index=def_sym_idx,
         key="symbol_select"
     )
     
     period = st.sidebar.selectbox(
         "Select data period", 
-        ["1d", "5d", "1wk", "1mo", "3mo"],
+        period_options,
+        index=def_period_idx,
         key="period_select"
     )
     
     interval = st.sidebar.selectbox(
         "Select interval", 
-        ["1m", "5m", "15m", "1h", "4h", "1d"],
+        interval_options,
+        index=def_interval_idx,
         key="interval_select"
     )
     
-    # Check if any setting changed and trigger instant update
+    # Check if any setting changed and trigger instant update + save
+    prev_symbol = persisted.get('symbol', '')
+    prev_period = persisted.get('period', '')
+    prev_interval = persisted.get('interval', '')
+    
     settings_changed = (symbol != prev_symbol or period != prev_period or interval != prev_interval)
     
     if settings_changed:
-        st.session_state.prev_symbol = symbol
-        st.session_state.prev_period = period
-        st.session_state.prev_interval = interval
+        # Save to permanent storage
+        save_user_settings({
+            'symbol': symbol,
+            'period': period,
+            'interval': interval
+        })
         st.session_state.force_refresh = True
     
     return symbol, period, interval
