@@ -158,26 +158,6 @@ def display_refresh_timer():
         total_refresh_interval = (st.session_state.next_refresh - st.session_state.last_refresh).total_seconds()
         progress = 1 - (time_until_next.total_seconds() / total_refresh_interval)
         st.progress(min(progress, 1.0), text=f"Next refresh: {st.session_state.next_refresh.strftime('%H:%M:%S')}")
-        
-        # ==============================
-        # AUTO-REFRESH TRIGGER (JS)
-        # ==============================
-        # Streamlit only runs once. This JS snippet tells the browser to reload 
-        # the page automatically when the timer reaches zero.
-        if st.session_state.auto_refresh:
-            # We add a 1-second buffer to ensure the backend time check (check_and_refresh)
-            # definitely sees that the time has passed.
-            wait_ms = max(500, int((time_until_next.total_seconds() + 1) * 1000))
-            st.components.v1.html(
-                f"""
-                <script>
-                    setTimeout(function() {{
-                        window.parent.location.reload();
-                    }}, {wait_ms});
-                </script>
-                """,
-                height=0
-            )
 
 # ==============================
 # Currency Confidence Scanner
@@ -187,7 +167,7 @@ def scan_currency_confidence(symbol, interval='15m'):
     symbol = normalize_ticker(symbol)
     try:
         # Fetch training data with error handling
-        training_period = "2d" if interval == "1m" else "1wk"
+        training_period = "5d" if interval == "1m" else "1wk"
         
         # Skip problematic symbols
         if symbol == "MATIC-USD":
@@ -380,7 +360,7 @@ def get_training_data(symbol, interval):
         if symbol == "MATIC-USD":
             return pd.DataFrame()
             
-        training_period = "2d" if interval == "1m" else "1wk"
+        training_period = "5d" if interval == "1m" else "1wk"
         
         @st.cache_data(ttl=300)
         def _fetch_training_data(_symbol, _interval, _training_period):
@@ -591,7 +571,6 @@ class LSTMModel(nn.Module):
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "crypto_models")
 
-@st.cache_data(ttl=120)
 def predict_with_lstm(symbol, interval, model_dir=MODEL_DIR, sequence_length=20):
     """Predict next price using pretrained LSTM model if available"""
     try:
@@ -653,14 +632,9 @@ def predict_with_lstm(symbol, interval, model_dir=MODEL_DIR, sequence_length=20)
 # ==============================
 # Enhanced Prediction with Multiple Models - FIXED VERSION
 # ==============================
-@st.cache_data(ttl=30)
 def predict_with_multiple_models(training_data, current_price, interval):
     """Predict next price using multiple ML models with REALISTIC confidence"""
     try:
-        # OPTIMIZATION: Limit training to last 1500 candles for speed
-        if len(training_data) > 1500:
-            training_data = training_data.iloc[-1500:].copy()
-            
         if len(training_data) < 20:
             return {}
         
@@ -757,13 +731,13 @@ def predict_with_multiple_models(training_data, current_price, interval):
         # MODELS
         models = {
             'Random Forest': RandomForestRegressor(
-                n_estimators=25,
+                n_estimators=50,
                 max_depth=8,
                 min_samples_split=5,
                 random_state=42
             ),
             'XGBoost': XGBRegressor(
-                n_estimators=25,
+                n_estimators=50,
                 max_depth=6,
                 learning_rate=0.1,
                 random_state=42
@@ -1006,44 +980,13 @@ def display_enhanced_predictions(symbol, interval, training_data, current_price)
             tp1, tp2 = current_price - (risk_multiplier * current_atr), current_price - (3 * current_atr)
             sl = current_price + (2 * current_atr)
 
-        # 3. High-Impact Signal Banner (MATCHING SCREENSHOT)
-        st.markdown(f"""
-            <style>
-                .signal-banner {{
-                    background-color: {color};
-                    padding: 20px;
-                    border-radius: 10px;
-                    text-align: left;
-                    margin-bottom: 10px;
-                    border-left: 10px solid rgba(0,0,0,0.2);
-                }}
-                .signal-text {{
-                    color: {"#FFFFFF" if action != "WAIT 🟡" else "#000000"};
-                    font-size: 28px;
-                    font-weight: bold;
-                    margin: 0;
-                }}
-                .confluence-bar {{
-                    background-color: #0e1117;
-                    padding: 8px 15px;
-                    border-radius: 5px;
-                    color: #4A90E2;
-                    font-weight: bold;
-                    font-size: 14px;
-                    border: 1px solid #1f2937;
-                }}
-            </style>
-            <div class="signal-banner">
-                <p class="signal-text">{verdict}</p>
-            </div>
-            <div class="confluence-bar">
-                Confluence Score: {score}/100
-            </div>
-            <br>
-        """, unsafe_allow_html=True)
-        
-        # Big Signal Row
+        # Strategic Layout using st.container and st.columns (SAFE FROM TYPEERRORS)
         with st.container():
+            st.success(f"### {verdict}")
+            st.info(f"**Confluence Score:** {score}/100")
+            
+            # Big Signal Row
+            sig_col1, sig_col2, sig_col3, sig_col4 = st.columns(4)
             sig_col1.metric("VERDICT", action)
             sig_col2.metric("CONFIDENCE", f"{score}%")
             sig_col3.metric("MOMENTUM", "BULLISH" if macd_val > sig_line else "BEARISH")
@@ -1112,12 +1055,12 @@ def check_and_refresh():
         st.cache_data.clear()
         st.rerun()
     
-    # Check if auto-refresh is due
+    # Check if auto-refresh is due (only refresh when time is up)
     if st.session_state.auto_refresh and now >= st.session_state.next_refresh:
         st.session_state.last_refresh = datetime.datetime.now()
         st.session_state.next_refresh = st.session_state.last_refresh + datetime.timedelta(seconds=st.session_state.refresh_interval)
         st.session_state.refresh_count += 1
-        # REMOVED cache_data.clear() to allow TTL to handle updates smoothly
+        st.cache_data.clear()
         st.rerun()
 
 # ==============================
@@ -1302,11 +1245,11 @@ def main():
     
   
     
-    # Check if refresh is needed
-    check_and_refresh()
-    
     # Display main dashboard
     display_dashboard(symbol, period, interval)
+    
+      # Check if refresh is needed
+    check_and_refresh()
 
     # Timer and refresh info in sidebar
     st.sidebar.markdown("---")
