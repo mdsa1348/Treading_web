@@ -1389,17 +1389,24 @@ def display_dashboard(symbol, period, interval):
     # 2. PRICE PREDICTION SECTION (PRO)
     # ==============================
     # Moved to top for instant visibility
-    try:
-        current_price = float(display_data['Close'].iloc[-1])
-        display_enhanced_predictions(symbol, interval, training_data, current_price)
-    except Exception as e:
-        st.error(f"⚠️ Signal Engine Error: {e}")
-        st.info("💡 Retrying prediction analysis...")
+    display_tradingview_widget(symbol)
 
     # ==============================
-    # 3. TRADINGVIEW HUB
+    # 3. AI STRATEGIC ANALYSIS (ASYNC LOADING FEEL)
     # ==============================
-    display_tradingview_widget(symbol)
+    st.markdown("---")
+    signal_placeholder = st.empty()
+    
+    with signal_placeholder.container():
+        with st.status("🔮 AI Engine: Analyzing Market Trends...", expanded=True) as status:
+            try:
+                current_price = float(display_data['Close'].iloc[-1])
+                # This is the slow part
+                display_enhanced_predictions(symbol, interval, training_data, current_price)
+                status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
+            except Exception as e:
+                st.error(f"⚠️ Signal Engine Error: {e}")
+                status.update(label="❌ Analysis Failed", state="error")
 
 # ==============================
 # Main execution
