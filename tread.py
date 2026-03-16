@@ -187,7 +187,7 @@ def scan_currency_confidence(symbol, interval='15m'):
     symbol = normalize_ticker(symbol)
     try:
         # Fetch training data with error handling
-        training_period = "5d" if interval == "1m" else "1wk"
+        training_period = "2d" if interval == "1m" else "1wk"
         
         # Skip problematic symbols
         if symbol == "MATIC-USD":
@@ -380,7 +380,7 @@ def get_training_data(symbol, interval):
         if symbol == "MATIC-USD":
             return pd.DataFrame()
             
-        training_period = "5d" if interval == "1m" else "1wk"
+        training_period = "2d" if interval == "1m" else "1wk"
         
         @st.cache_data(ttl=300)
         def _fetch_training_data(_symbol, _interval, _training_period):
@@ -657,6 +657,10 @@ def predict_with_lstm(symbol, interval, model_dir=MODEL_DIR, sequence_length=20)
 def predict_with_multiple_models(training_data, current_price, interval):
     """Predict next price using multiple ML models with REALISTIC confidence"""
     try:
+        # OPTIMIZATION: Limit training to last 1500 candles for speed
+        if len(training_data) > 1500:
+            training_data = training_data.iloc[-1500:].copy()
+            
         if len(training_data) < 20:
             return {}
         
@@ -753,13 +757,13 @@ def predict_with_multiple_models(training_data, current_price, interval):
         # MODELS
         models = {
             'Random Forest': RandomForestRegressor(
-                n_estimators=50,
+                n_estimators=25,
                 max_depth=8,
                 min_samples_split=5,
                 random_state=42
             ),
             'XGBoost': XGBRegressor(
-                n_estimators=50,
+                n_estimators=25,
                 max_depth=6,
                 learning_rate=0.1,
                 random_state=42
@@ -1108,12 +1112,12 @@ def check_and_refresh():
         st.cache_data.clear()
         st.rerun()
     
-    # Check if auto-refresh is due (only refresh when time is up)
+    # Check if auto-refresh is due
     if st.session_state.auto_refresh and now >= st.session_state.next_refresh:
         st.session_state.last_refresh = datetime.datetime.now()
         st.session_state.next_refresh = st.session_state.last_refresh + datetime.timedelta(seconds=st.session_state.refresh_interval)
         st.session_state.refresh_count += 1
-        st.cache_data.clear()
+        # REMOVED cache_data.clear() to allow TTL to handle updates smoothly
         st.rerun()
 
 # ==============================
@@ -1298,11 +1302,11 @@ def main():
     
   
     
+    # Check if refresh is needed
+    check_and_refresh()
+    
     # Display main dashboard
     display_dashboard(symbol, period, interval)
-    
-      # Check if refresh is needed
-    check_and_refresh()
 
     # Timer and refresh info in sidebar
     st.sidebar.markdown("---")
