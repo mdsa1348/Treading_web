@@ -322,12 +322,10 @@ def display_top_currencies():
     # Perform initial scan if not done
     if not st.session_state.initial_scan_complete:
         perform_initial_scan()
-        return
     
     if not st.session_state.currency_confidences:
         st.info("🔄 No confidence data available. Running scan...")
         perform_initial_scan()
-        return
     
     # Sort currencies by confidence (descending)
     sorted_currencies = sorted(
@@ -1335,21 +1333,8 @@ def setup_refresh_controls():
 # Main dashboard function
 # ==============================
 def display_dashboard(symbol, period, interval):
-    # Display top currencies at the very top
-    display_top_currencies()
-    # st.session_state.force_refresh = True
-    
-    # check_and_refresh()
-    # Display refresh timer
-    st.markdown("---")
-    st.subheader("🕐 Live Refresh Timer")
-    display_refresh_timer()
-    st.markdown("---")
-    
-    # Fetch display data
+    # PRE-FETCH DATA (Must happen before Signal Room)
     display_data = get_crypto_data(symbol, period, interval)
-    
-    # Fetch training data
     training_data = get_training_data(symbol, interval)
     
     if display_data.empty:
@@ -1359,54 +1344,56 @@ def display_dashboard(symbol, period, interval):
             st.cache_data.clear()
             st.rerun()
         return
-    
-    # Display current time and status
-    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    st.write(f"**🕒 Current Clock:** {current_time}")
-    
-    # Show exactly which candle the analysis is using
-    if not display_data.empty:
-        time_col = 'Datetime' if 'Datetime' in display_data.columns else 'Date'
-        if time_col in display_data.columns:
-            latest_point = display_data[time_col].iloc[-1]
-            latest_str = latest_point.strftime('%Y-%m-%d %H:%M:%S') if hasattr(latest_point, 'strftime') else str(latest_point)
-            st.write(f"**📊 Analysis Based on Data Up To:** `{latest_str}`")
-
-    st.write(f"**📈 Displaying:** {len(display_data)} {interval} candles | **Period:** {period}")
-    
-    if not training_data.empty:
-        st.write(f"**🤖 Training:** {len(training_data)} points (1 week)")
-    
-    # Check required columns
-    required_columns = ['Open', 'High', 'Low', 'Close']
-    missing_columns = [col for col in required_columns if col not in display_data.columns]
-    
-    if missing_columns:
-        st.error(f"❌ Missing columns: {missing_columns}")
-        return
-    
-    # ==============================
-    # 2. PRICE PREDICTION SECTION (PRO)
-    # ==============================
-    # Moved to top for instant visibility
-    display_tradingview_widget(symbol)
 
     # ==============================
-    # 3. AI STRATEGIC ANALYSIS (ASYNC LOADING FEEL)
+    # 1. STRATEGIC SIGNAL ROOM (VERY TOP)
     # ==============================
-    st.markdown("---")
     signal_placeholder = st.empty()
     
     with signal_placeholder.container():
         with st.status("🔮 AI Engine: Analyzing Market Trends...", expanded=True) as status:
             try:
                 current_price = float(display_data['Close'].iloc[-1])
-                # This is the slow part
                 display_enhanced_predictions(symbol, interval, training_data, current_price)
                 status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
             except Exception as e:
                 st.error(f"⚠️ Signal Engine Error: {e}")
                 status.update(label="❌ Analysis Failed", state="error")
+
+    # ==============================
+    # 2. TRADINGVIEW HUB
+    # ==============================
+    st.markdown("---")
+    display_tradingview_widget(symbol)
+
+    # ==============================
+    # 3. TOP CURRENCIES
+    # ==============================
+    display_top_currencies()
+
+    # ==============================
+    # 4. STATUS & REFRESH TIMER (BOTTOM)
+    # ==============================
+    st.markdown("---")
+    st.subheader("🕐 Live Refresh Timer")
+    display_refresh_timer()
+    
+    # Display current time and status
+    st.markdown("---")
+    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    st.write(f"**🕒 Current Clock:** {current_time}")
+    
+    # Show exactly which candle the analysis is using
+    time_col = 'Datetime' if 'Datetime' in display_data.columns else 'Date'
+    if time_col in display_data.columns:
+        latest_point = display_data[time_col].iloc[-1]
+        latest_str = latest_point.strftime('%Y-%m-%d %H:%M:%S') if hasattr(latest_point, 'strftime') else str(latest_point)
+        st.write(f"**📊 Analysis Based on Data Up To:** `{latest_str}`")
+
+    st.write(f"**📈 Displaying:** {len(display_data)} {interval} candles | **Period:** {period}")
+    
+    if not training_data.empty:
+        st.write(f"**🤖 Training:** {len(training_data)} points (1 week)")
 
 # ==============================
 # Main execution
