@@ -157,7 +157,7 @@ if 'active_symbols' not in st.session_state:
         # Initial default list
         st.session_state.active_symbols = [
             "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOT-USD", "BNB-USD", "AVAX-USD", "LINK-USD", "LTC-USD",
-            "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X", "XAGUSD=X"
+            "MATIC-USD", "DOGE-USD", "EURUSD=X", "GBPUSD=X", "USDJPY=X", 
         ]
 
 # Helper to get current list (for compatibility)
