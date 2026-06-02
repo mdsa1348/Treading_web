@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoBot | Live Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #f8fafc; }
+        .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.5); }
+        .glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.15); }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                    Trading Bot Live
+                </h1>
+                <p class="text-slate-400 text-sm mt-1 flex items-center gap-2">
+                    <span id="status-dot" class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    System Status: <span id="last-update">Waiting for data...</span>
+                </p>
+            </div>
+            <div class="flex gap-4">
+                <div class="glass px-6 py-3 rounded-2xl glow-cyan">
+                    <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total Balance</p>
+                    <p id="balance" class="text-2xl font-bold text-white">$0.0000</p>
+                </div>
+                <div class="glass px-6 py-3 rounded-2xl">
+                    <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Session P&L</p>
+                    <p id="total-pnl" class="text-2xl font-bold text-green-400">+$0.0000</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="glass p-6 rounded-2xl">
+                <p class="text-sm text-slate-400 mb-1">Win Rate</p>
+                <p id="win-rate" class="text-3xl font-bold">0%</p>
+            </div>
+            <div class="glass p-6 rounded-2xl">
+                <p class="text-sm text-slate-400 mb-1">Active Trades</p>
+                <p id="active-count" class="text-3xl font-bold text-cyan-400">0</p>
+            </div>
+            <div class="glass p-6 rounded-2xl">
+                <p class="text-sm text-slate-400 mb-1">Winning Trades</p>
+                <p id="wins" class="text-3xl font-bold text-green-400">0</p>
+            </div>
+            <div class="glass p-6 rounded-2xl">
+                <p class="text-sm text-slate-400 mb-1">Losing Trades</p>
+                <p id="losses" class="text-3xl font-bold text-red-400">0</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Active Positions -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="glass p-6 rounded-3xl min-h-[400px]">
+                    <h2 class="text-xl font-semibold mb-6 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                        Active Positions
+                    </h2>
+                    <div id="positions-container" class="space-y-4">
+                        <p class="text-slate-500 text-center py-12">No active positions scanning market...</p>
+                    </div>
+                </div>
+
+                <!-- Recent History -->
+                <div class="glass p-6 rounded-3xl">
+                    <h2 class="text-xl font-semibold mb-6">Recent History</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="text-slate-500 text-xs uppercase tracking-wider">
+                                <tr>
+                                    <th class="pb-4 px-2">Symbol</th>
+                                    <th class="pb-4 px-2 text-right">Profit/Loss</th>
+                                    <th class="pb-4 px-2 text-center">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-body">
+                                <!-- History items will be injected here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Side Info -->
+            <div class="space-y-6">
+                <div class="glass p-6 rounded-3xl">
+                    <h2 class="text-lg font-semibold mb-4">Market Scanning</h2>
+                    <div id="symbols-list" class="flex flex-wrap gap-2">
+                        <!-- Symbols injected here -->
+                    </div>
+                </div>
+
+                <div class="glass p-6 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950">
+                    <h2 class="text-lg font-semibold mb-4 text-cyan-400">Bot Intelligence</h2>
+                    <p class="text-sm text-slate-400 leading-relaxed mb-4">
+                        The bot is currently monitoring multiple indicators (RSI, MACD, and Bollinger Bands) across all active symbols. 
+                    </p>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-500">Signal Confidence Threshold</span>
+                            <span id="threshold-text" class="text-white font-mono">70.0%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div id="threshold-bar" class="bg-cyan-500 h-full w-[70%]"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateDashboard() {
+            try {
+                const response = await fetch('dashboard_data.json?t=' + new Date().getTime());
+                const data = await response.json();
+
+                // Update Header
+                document.getElementById('balance').innerText = `$${data.balance.toFixed(4)}`;
+                const pnlEl = document.getElementById('total-pnl');
+                pnlEl.innerText = `${data.performance.total_pnl >= 0 ? '+' : ''}$${data.performance.total_pnl.toFixed(4)}`;
+                pnlEl.className = `text-2xl font-bold ${data.performance.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                document.getElementById('last-update').innerText = `Live (Last update: ${data.lastUpdate})`;
+
+                // Update Stats
+                document.getElementById('win-rate').innerText = `${data.performance.win_rate.toFixed(1)}%`;
+                document.getElementById('active-count').innerText = data.activeTrades.length;
+                document.getElementById('wins').innerText = data.performance.winning_trades;
+                document.getElementById('losses').innerText = data.performance.losing_trades;
+
+                // Update Intelligence Threshold
+                document.getElementById('threshold-text').innerText = `${data.threshold}%`;
+                document.getElementById('threshold-bar').style.width = `${data.threshold}%`;
+
+                // Update Symbols
+                const symbolsContainer = document.getElementById('symbols-list');
+                symbolsContainer.innerHTML = data.symbols.map(s => 
+                    `<span class="px-3 py-1 bg-slate-800 rounded-full text-xs text-cyan-300 border border-cyan-500/30">${s}</span>`
+                ).join('');
+
+                // Update Positions
+                const posContainer = document.getElementById('positions-container');
+                if (data.activeTrades.length === 0) {
+                    posContainer.innerHTML = '<p class="text-slate-500 text-center py-12">No active positions scanning market...</p>';
+                } else {
+                    posContainer.innerHTML = data.activeTrades.map(t => `
+                        <div class="bg-slate-800/50 border border-slate-700/50 p-4 rounded-2xl flex justify-between items-center hover:border-slate-600 transition-all">
+                            <div>
+                                <p class="text-white font-bold flex items-center gap-2">
+                                    ${t.symbol} 
+                                    <span class="px-2 py-0.5 rounded text-[10px] ${t.side === 'LONG' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} border ${t.side === 'LONG' ? 'border-green-500/30' : 'border-red-500/30'}">
+                                        ${t.side}
+                                    </span>
+                                </p>
+                                <p class="text-xs text-slate-500 mt-1">Entry: $${t.entry_price.toFixed(4)}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-lg font-mono font-bold ${t.live_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">
+                                    ${t.live_pnl >= 0 ? '+' : ''}$${t.live_pnl.toFixed(2)}
+                                </p>
+                                <p class="text-[10px] text-slate-500">${t.live_pnl_pct >= 0 ? '+' : ''}${t.live_pnl_pct.toFixed(2)}%</p>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                // Update History
+                const historyBody = document.getElementById('history-body');
+                historyBody.innerHTML = data.recentTrades.reverse().map(t => `
+                    <tr class="border-t border-slate-800/50">
+                        <td class="py-4 px-2 font-semibold text-white">${t.symbol}</td>
+                        <td class="py-4 px-2 text-right font-mono ${t.profit_loss >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${t.profit_loss >= 0 ? '+' : ''}$${t.profit_loss.toFixed(4)}
+                        </td>
+                        <td class="py-4 px-2 text-center text-xs text-slate-400 uppercase tracking-tighter">${t.exit_reason}</td>
+                    </tr>
+                `).join('');
+
+            } catch (err) {
+                console.log('Waiting for bot to generate data...');
+            }
+        }
+
+        // Update every 3 seconds
+        setInterval(updateDashboard, 3000);
+        updateDashboard();
+    </script>
+</body>
+</html>
